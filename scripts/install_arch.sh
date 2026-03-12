@@ -18,7 +18,7 @@
 #
 #  Usage :
 #    Depuis l'ISO Arch Linux live :
-#      curl -LO https://raw.githubusercontent.com/<vous>/install_arch.sh
+#      curl -LO https://raw.githubusercontent.com/isoura4/scripts/main/scripts/install_arch.sh
 #      chmod +x install_arch.sh
 #      ./install_arch.sh
 ###############################################################################
