@@ -46,9 +46,23 @@ TARGET_USER=""          # Sera détecté depuis la config archinstall
 DOTS_REPO="https://github.com/end-4/dots-hyprland.git"
 DOTS_DIR_NAME="dots-hyprland"
 
-# Fichiers de config archinstall (dans le même dossier que ce script)
-USER_CONFIG="${SCRIPT_DIR}/user_configuration.json"
-USER_CREDS="${SCRIPT_DIR}/user_credential.json"
+# Fichiers de config archinstall — recherche d'abord dans $PWD, puis dans $SCRIPT_DIR
+CONFIG_FILENAME="user_configuration.json"
+CREDS_FILENAME="user_credentials.json"
+
+if [[ -f "${PWD}/${CONFIG_FILENAME}" ]]; then
+    USER_CONFIG="${PWD}/${CONFIG_FILENAME}"
+else
+    USER_CONFIG="${SCRIPT_DIR}/${CONFIG_FILENAME}"
+fi
+info "${CONFIG_FILENAME} résolu vers : $USER_CONFIG"
+
+if [[ -f "${PWD}/${CREDS_FILENAME}" ]]; then
+    USER_CREDS="${PWD}/${CREDS_FILENAME}"
+else
+    USER_CREDS="${SCRIPT_DIR}/${CREDS_FILENAME}"
+fi
+info "${CREDS_FILENAME} résolu vers : $USER_CREDS"
 
 # ========================== VÉRIFICATIONS PRÉLIMINAIRES ======================
 section "Vérifications préliminaires"
@@ -60,13 +74,13 @@ fi
 
 if [[ ! -f "$USER_CONFIG" ]]; then
     err "Fichier de configuration introuvable : $USER_CONFIG"
-    err "Placez user_configuration.json dans le même dossier que ce script."
+    err "Placez user_configuration.json dans le répertoire courant ou dans le même dossier que ce script."
     exit 1
 fi
 
 if [[ ! -f "$USER_CREDS" ]]; then
     err "Fichier de credentials introuvable : $USER_CREDS"
-    err "Placez user_credential.json dans le même dossier que ce script."
+    err "Placez user_credentials.json dans le répertoire courant ou dans le même dossier que ce script."
     exit 1
 fi
 
