@@ -263,6 +263,14 @@ sed -i "3a DOTS_DIR_NAME=\"${DOTS_DIR_NAME}\"" "${MOUNT_POINT}/root/post_install
 cat >> "${MOUNT_POINT}/root/post_install.sh" << 'CHROOT_SCRIPT'
 TARGET_HOME="/home/${TARGET_USER}"
 
+# Configurer sudo NOPASSWD temporaire pour l'installation
+# (nécessaire car makepkg et yay utilisent sudo dans le chroot non-interactif)
+SUDOERS_TEMP="/etc/sudoers.d/99-install-nopasswd"
+echo "${TARGET_USER} ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_TEMP"
+chmod 440 "$SUDOERS_TEMP"
+# Garantir le nettoyage même en cas d'erreur
+trap 'rm -f "$SUDOERS_TEMP"' EXIT
+
 ###########################################################################
 #  2.1  Installation de yay (AUR helper)
 ###########################################################################
@@ -272,17 +280,21 @@ if command -v yay &>/dev/null; then
     log "yay est déjà installé, passage à la suite."
 else
     info "Installation des prérequis (base-devel, git)..."
-    pacman -S --needed --noconfirm base-devel git
+    pacman -S --needed --noconfirm base-devel git sudo
 
-    info "Construction et installation de yay..."
-    # Construire yay en tant qu'utilisateur non-root
+    info "Construction de yay..."
+    # Construire yay en tant qu'utilisateur non-root (sans -i, compilation seulement)
     su - "$TARGET_USER" -c '
         cd /tmp
         rm -rf yay-bin
         git clone https://aur.archlinux.org/yay-bin.git
         cd yay-bin
-        makepkg -si --noconfirm
+        makepkg --noconfirm
     '
+
+    info "Installation de yay..."
+    # Installer en tant que root — pas besoin de sudo
+    pacman -U --noconfirm /tmp/yay-bin/yay-bin-*.pkg.tar.zst
     rm -rf /tmp/yay-bin
     log "yay installé avec succès."
 fi
@@ -294,6 +306,7 @@ section "2.2 — Paquets système supplémentaires"
 
 info "Installation des paquets audio, réseau, et outils..."
 pacman -S --needed --noconfirm \
+    sudo \
     pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber \
     sof-firmware alsa-firmware alsa-utils \
     pavucontrol \
@@ -870,6 +883,13 @@ log "Script diagnose-dots créé."
 #  FIN du chroot
 ###########################################################################
 section "Post-installation terminée"
+
+# Supprimer le sudo NOPASSWD temporaire
+if [[ -f "$SUDOERS_TEMP" ]]; then
+    rm -f "$SUDOERS_TEMP"
+    log "Sudo NOPASSWD temporaire supprimé."
+fi
+
 log "Tous les composants sont installés et configurés."
 info ""
 info "Résumé :"
