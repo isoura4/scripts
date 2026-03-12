@@ -307,7 +307,7 @@ section "2.2 — Paquets système supplémentaires"
 info "Installation des paquets audio, réseau, et outils..."
 pacman -S --needed --noconfirm \
     sudo \
-    pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber \
+    pipewire pipewire-alsa pipewire-pulse wireplumber \
     sof-firmware alsa-firmware alsa-utils \
     pavucontrol \
     power-profiles-daemon \
@@ -341,7 +341,10 @@ su - "$TARGET_USER" -c 'yay -S --needed --noconfirm arch-update'
 # Activer le timer systemd pour les vérifications automatiques
 # (si arch-update fournit un timer, l'activer pour l'utilisateur)
 if [[ -f /usr/lib/systemd/user/arch-update.timer ]]; then
-    su - "$TARGET_USER" -c 'systemctl --user enable arch-update.timer'
+    # systemctl --user échoue dans un chroot (pas de session D-Bus) — || true pour continuer
+    # Le timer sera activé automatiquement au premier login
+    su - "$TARGET_USER" -c 'systemctl --user enable arch-update.timer' 2>/dev/null \
+        || warn "arch-update.timer non activé dans le chroot — sera configuré au premier login."
     log "arch-update timer activé."
 else
     warn "Timer arch-update non trouvé — il sera configuré au premier login."
@@ -424,12 +427,16 @@ DOTS_PATH="${TARGET_HOME}/${DOTS_DIR_NAME}"
 info "Lancement du script d'installation du thème (mode automatique)..."
 # Le script ./setup du dépôt gère tout : dépendances, fichiers, services
 # On utilise --force --skip-allgreeting pour automatiser
-su - "$TARGET_USER" -c "
+if su - "$TARGET_USER" -c "
     cd '${DOTS_PATH}'
-    ./setup install --force --skip-allgreeting --skip-sysupdate
-"
-
-log "Thème dots-hyprland installé."
+    ./setup install --force --skip-allgreeting --skip-sysupdate 2>&1
+"; then
+    log "Thème dots-hyprland installé."
+else
+    warn "L'installation du thème dots-hyprland a rencontré des erreurs."
+    warn "Vous pourrez relancer l'installation manuellement après le premier boot :"
+    warn "  cd ~/${DOTS_DIR_NAME} && ./setup install"
+fi
 
 ###########################################################################
 #  2.6  Configuration audio / micro
@@ -933,6 +940,12 @@ fi # END Phase 2
 #  PHASE 3 : Finalisation
 ###############################################################################
 section "Phase 3 : Finalisation"
+
+# Vérification rapide que le système semble installé
+if [[ ! -d "${MOUNT_POINT}/home" ]]; then
+    warn "Le système ne semble pas complètement installé sur ${MOUNT_POINT}."
+    warn "Vérifiez que les phases précédentes se sont terminées correctement."
+fi
 
 log "Installation complète !"
 info ""
