@@ -42,7 +42,9 @@ Ce script :
   Depuis l'ISO Arch Linux live :
     curl -LO https://raw.githubusercontent.com/isoura4/scripts/main/scripts/install_arch.sh
     chmod +x install_arch.sh
-    ./install_arch.sh
+    ./install_arch.sh                  # Installation complète
+    ./install_arch.sh --phase 2        # Reprendre depuis la phase 2
+    ./install_arch.sh --phase 3        # Reprendre depuis la phase 3
 ```
 
 ---
