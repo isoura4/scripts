@@ -272,9 +272,16 @@ chown "${TARGET_USER}:${TARGET_USER}" "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 
 # Wrapper pour exécuter des commandes en tant que TARGET_USER dans le chroot
-# Propage XDG_RUNTIME_DIR et d'autres variables nécessaires
+# Utilise su sans login shell (-) et force les variables d'environnement
+# via la commande elle-même pour éviter le reset d'environnement
 run_as_user() {
-    su - "$TARGET_USER" -c "export XDG_RUNTIME_DIR='${XDG_RUNTIME_DIR}'; $*"
+    su "$TARGET_USER" -s /bin/bash -c "
+        export HOME='${TARGET_HOME}'
+        export XDG_RUNTIME_DIR='${XDG_RUNTIME_DIR}'
+        export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${TARGET_HOME}/.local/bin'
+        cd
+        $*
+    "
 }
 
 # Configurer sudo NOPASSWD temporaire pour l'installation
