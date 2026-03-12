@@ -263,6 +263,20 @@ sed -i "3a DOTS_DIR_NAME=\"${DOTS_DIR_NAME}\"" "${MOUNT_POINT}/root/post_install
 cat >> "${MOUNT_POINT}/root/post_install.sh" << 'CHROOT_SCRIPT'
 TARGET_HOME="/home/${TARGET_USER}"
 
+# Créer et exporter XDG_RUNTIME_DIR pour les commandes su dans le chroot
+# (nécessaire car il n'y a pas de session systemd-logind dans le chroot)
+TARGET_UID=$(id -u "$TARGET_USER" 2>/dev/null || echo "1000")
+export XDG_RUNTIME_DIR="/run/user/${TARGET_UID}"
+mkdir -p "$XDG_RUNTIME_DIR"
+chown "${TARGET_USER}:${TARGET_USER}" "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+
+# Wrapper pour exécuter des commandes en tant que TARGET_USER dans le chroot
+# Propage XDG_RUNTIME_DIR et d'autres variables nécessaires
+run_as_user() {
+    su - "$TARGET_USER" -c "export XDG_RUNTIME_DIR='${XDG_RUNTIME_DIR}'; $*"
+}
+
 # Configurer sudo NOPASSWD temporaire pour l'installation
 # (nécessaire car makepkg et yay utilisent sudo dans le chroot non-interactif)
 SUDOERS_TEMP="/etc/sudoers.d/99-install-nopasswd"
@@ -284,7 +298,7 @@ else
 
     info "Construction de yay..."
     # Construire yay en tant qu'utilisateur non-root (sans -i, compilation seulement)
-    su - "$TARGET_USER" -c '
+    run_as_user '
         cd /tmp
         rm -rf yay-bin
         git clone https://aur.archlinux.org/yay-bin.git
@@ -336,14 +350,14 @@ log "Paquets système installés et services activés."
 section "2.3 — Installation de arch-update"
 
 info "Installation de arch-update via yay..."
-su - "$TARGET_USER" -c 'yay -S --needed --noconfirm arch-update'
+run_as_user 'yay -S --needed --noconfirm arch-update'
 
 # Activer le timer systemd pour les vérifications automatiques
 # (si arch-update fournit un timer, l'activer pour l'utilisateur)
 if [[ -f /usr/lib/systemd/user/arch-update.timer ]]; then
     # systemctl --user échoue dans un chroot (pas de session D-Bus) — || true pour continuer
     # Le timer sera activé automatiquement au premier login
-    su - "$TARGET_USER" -c 'systemctl --user enable arch-update.timer' 2>/dev/null \
+    run_as_user 'systemctl --user enable arch-update.timer' 2>/dev/null \
         || warn "arch-update.timer non activé dans le chroot — sera configuré au premier login."
     log "arch-update timer activé."
 else
@@ -410,7 +424,7 @@ log "Hyprland se lancera automatiquement sur TTY1."
 section "2.5 — Installation du thème dots-hyprland"
 
 info "Clonage du dépôt dots-hyprland..."
-su - "$TARGET_USER" -c "
+run_as_user "
     cd ~
     if [[ -d '${DOTS_DIR_NAME}' ]]; then
         echo 'Dépôt déjà présent, mise à jour...'
@@ -427,7 +441,7 @@ DOTS_PATH="${TARGET_HOME}/${DOTS_DIR_NAME}"
 info "Lancement du script d'installation du thème (mode automatique)..."
 # Le script ./setup du dépôt gère tout : dépendances, fichiers, services
 # On utilise --force --skip-allgreeting pour automatiser
-if su - "$TARGET_USER" -c "
+if run_as_user "
     cd '${DOTS_PATH}'
     ./setup install --force --skip-allgreeting --skip-sysupdate 2>&1
 "; then
@@ -446,7 +460,7 @@ section "2.6 — Configuration audio et microphone"
 # PipeWire est déjà installé — s'assurer que les services utilisateur sont activés
 # (ils se lanceront au prochain login Wayland)
 info "Activation des services PipeWire pour ${TARGET_USER}..."
-su - "$TARGET_USER" -c '
+run_as_user '
     systemctl --user enable pipewire.socket 2>/dev/null || true
     systemctl --user enable pipewire-pulse.socket 2>/dev/null || true
     systemctl --user enable wireplumber.service 2>/dev/null || true
@@ -653,7 +667,7 @@ fi
 # ─── FIX 5 : Python venv pour les couleurs Material You (#3064, #3011) ───
 # Conditionnel : vérifie si le venv existe et fonctionne déjà
 QUICKSHELL_VENV="${TARGET_HOME}/.local/state/quickshell/.venv"
-su - "$TARGET_USER" -c "
+run_as_user "
     if [[ ! -d '${QUICKSHELL_VENV}' ]] || ! '${QUICKSHELL_VENV}/bin/python' -c 'import material_color_utilities' 2>/dev/null; then
         echo '[ℹ] Création/réparation du venv Python pour Quickshell...'
         mkdir -p '${QUICKSHELL_VENV%/*}'
