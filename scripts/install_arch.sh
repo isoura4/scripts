@@ -47,8 +47,8 @@ DOTS_REPO="https://github.com/end-4/dots-hyprland.git"
 DOTS_DIR_NAME="dots-hyprland"
 
 # Fichiers de config archinstall (dans le même dossier que ce script)
-USER_CONFIG="${SCRIPT_DIR}/user_configuration_nocrypt.json"
-USER_CREDS="${SCRIPT_DIR}/user_credential_nocrypts.json"
+USER_CONFIG="${SCRIPT_DIR}/user_configuration.json"
+USER_CREDS="${SCRIPT_DIR}/user_credential.json"
 
 # ========================== VÉRIFICATIONS PRÉLIMINAIRES ======================
 section "Vérifications préliminaires"
@@ -60,13 +60,13 @@ fi
 
 if [[ ! -f "$USER_CONFIG" ]]; then
     err "Fichier de configuration introuvable : $USER_CONFIG"
-    err "Placez user_configuration_nocrypt.json dans le même dossier que ce script."
+    err "Placez user_configuration.json dans le même dossier que ce script."
     exit 1
 fi
 
 if [[ ! -f "$USER_CREDS" ]]; then
     err "Fichier de credentials introuvable : $USER_CREDS"
-    err "Placez user_credential_nocrypts.json dans le même dossier que ce script."
+    err "Placez user_credential.json dans le même dossier que ce script."
     exit 1
 fi
 
