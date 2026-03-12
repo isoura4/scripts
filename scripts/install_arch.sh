@@ -131,11 +131,26 @@ import json, sys
 try:
     with open('$USER_CREDS') as f:
         data = json.load(f)
-    # Chercher la première clé qui n'est pas '!root' et pas 'root'
+    # Format nouveau : { '!users': [{'username': '...', ...}] }
+    if '!users' in data and isinstance(data['!users'], list):
+        for u in data['!users']:
+            if isinstance(u, dict) and 'username' in u:
+                name = u['username']
+                if name and name != 'root':
+                    print(name)
+                    sys.exit(0)
+    # Format ancien : { 'root': '...', 'myuser': '...' }
     for user in data:
-        if user != 'root' and not user.startswith('!'):
-            print(user)
-            sys.exit(0)
+        if user == 'root':
+            continue
+        if user.startswith('!'):
+            continue
+        # Ignorer les clés qui ressemblent à des métadonnées
+        lower = user.lower()
+        if 'password' in lower or 'enc' in lower or 'salt' in lower:
+            continue
+        print(user)
+        sys.exit(0)
 except:
     pass
 " 2>/dev/null || true)
@@ -222,7 +237,7 @@ mkdir -p "${MOUNT_POINT}/tmp"
 
 # Créer le script de post-installation qui s'exécutera dans le chroot
 cat > "${MOUNT_POINT}/tmp/post_install.sh" << 'CHROOT_SCRIPT'
-#!/bin/bash
+#!/usr/bin/bash
 set -euo pipefail
 
 # Couleurs (redéfinies dans le chroot)
@@ -236,8 +251,11 @@ section() { printf "\n${BLUE}${BOLD}══════════════�
 
 CHROOT_SCRIPT
 
-# Injecter la variable TARGET_USER dans le script chroot
+# Injecter toutes les variables dans le script chroot (après le shebang)
+# Trois appels séquentiels : chaque insertion décale les lignes suivantes
 sed -i "1a TARGET_USER=\"${TARGET_USER}\"" "${MOUNT_POINT}/tmp/post_install.sh"
+sed -i "2a DOTS_REPO=\"${DOTS_REPO}\"" "${MOUNT_POINT}/tmp/post_install.sh"
+sed -i "3a DOTS_DIR_NAME=\"${DOTS_DIR_NAME}\"" "${MOUNT_POINT}/tmp/post_install.sh"
 
 cat >> "${MOUNT_POINT}/tmp/post_install.sh" << 'CHROOT_SCRIPT'
 TARGET_HOME="/home/${TARGET_USER}"
@@ -872,12 +890,17 @@ CHROOT_SCRIPT
 # Rendre le script exécutable et le lancer dans le chroot
 chmod +x "${MOUNT_POINT}/tmp/post_install.sh"
 
-# Injecter les variables nécessaires au début du script chroot
-sed -i "2a DOTS_REPO=\"${DOTS_REPO}\"" "${MOUNT_POINT}/tmp/post_install.sh"
-sed -i "3a DOTS_DIR_NAME=\"${DOTS_DIR_NAME}\"" "${MOUNT_POINT}/tmp/post_install.sh"
+# Vérification du script avant exécution
+if [[ ! -f "${MOUNT_POINT}/tmp/post_install.sh" ]]; then
+    err "Le script post_install.sh n'a pas été créé dans ${MOUNT_POINT}/tmp/"
+    exit 1
+fi
+info "Vérification : post_install.sh créé ($(wc -l < "${MOUNT_POINT}/tmp/post_install.sh") lignes, $(wc -c < "${MOUNT_POINT}/tmp/post_install.sh") octets)"
+info "Shebang : $(head -1 "${MOUNT_POINT}/tmp/post_install.sh")"
+info "Variables injectées : $(head -5 "${MOUNT_POINT}/tmp/post_install.sh" | grep -cE '^[A-Z_]+=')"
 
 info "Exécution du script de post-installation dans le chroot..."
-arch-chroot "${MOUNT_POINT}" /tmp/post_install.sh
+arch-chroot "${MOUNT_POINT}" /usr/bin/bash /tmp/post_install.sh
 
 # Nettoyage
 rm -f "${MOUNT_POINT}/tmp/post_install.sh"
