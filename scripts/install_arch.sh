@@ -271,6 +271,15 @@ mkdir -p "$XDG_RUNTIME_DIR"
 chown "${TARGET_USER}:${TARGET_USER}" "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 
+# Créer un script askpass vide pour sudo sans TTY
+# (nécessaire car sudo peut requérir un terminal même avec NOPASSWD dans certaines configs)
+ASKPASS_SCRIPT="/tmp/.sudo_askpass_noop"
+cat > "$ASKPASS_SCRIPT" << 'ASKPASS'
+#!/bin/bash
+echo ""
+ASKPASS
+chmod +x "$ASKPASS_SCRIPT"
+
 # Wrapper pour exécuter des commandes en tant que TARGET_USER dans le chroot
 # Utilise su sans login shell (-) et force les variables d'environnement
 # via la commande elle-même pour éviter le reset d'environnement
@@ -279,6 +288,8 @@ run_as_user() {
         export HOME='${TARGET_HOME}'
         export XDG_RUNTIME_DIR='${XDG_RUNTIME_DIR}'
         export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${TARGET_HOME}/.local/bin'
+        export SUDO_ASKPASS='${ASKPASS_SCRIPT}'
+        export SUDO_PROMPT=''
         cd
         $*
     "
@@ -287,7 +298,10 @@ run_as_user() {
 # Configurer sudo NOPASSWD temporaire pour l'installation
 # (nécessaire car makepkg et yay utilisent sudo dans le chroot non-interactif)
 SUDOERS_TEMP="/etc/sudoers.d/99-install-nopasswd"
-echo "${TARGET_USER} ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_TEMP"
+cat > "$SUDOERS_TEMP" << SUDOEOF
+Defaults:${TARGET_USER} !requiretty
+${TARGET_USER} ALL=(ALL) NOPASSWD: ALL
+SUDOEOF
 chmod 440 "$SUDOERS_TEMP"
 # Garantir le nettoyage même en cas d'erreur
 trap 'rm -f "$SUDOERS_TEMP"' EXIT
