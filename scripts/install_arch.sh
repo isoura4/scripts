@@ -20,7 +20,9 @@
 #    Depuis l'ISO Arch Linux live :
 #      curl -LO https://raw.githubusercontent.com/isoura4/scripts/main/scripts/install_arch.sh
 #      chmod +x install_arch.sh
-#      ./install_arch.sh
+#      ./install_arch.sh                  # Installation complète
+#      ./install_arch.sh --phase 2        # Reprendre depuis la phase 2
+#      ./install_arch.sh --phase 3        # Reprendre depuis la phase 3
 ###############################################################################
 set -euo pipefail
 
@@ -38,6 +40,45 @@ warn() { printf "${YELLOW}${BOLD}[⚠]${RST} %s\n" "$*"; }
 err()  { printf "${RED}${BOLD}[✘]${RST} %s\n" "$*"; }
 info() { printf "${CYAN}${BOLD}[ℹ]${RST} %s\n" "$*"; }
 section() { printf "\n${BLUE}${BOLD}══════════════════════════════════════════${RST}\n"; printf "${BLUE}${BOLD}  %s${RST}\n" "$*"; printf "${BLUE}${BOLD}══════════════════════════════════════════${RST}\n\n"; }
+
+# ========================== ARGUMENTS ========================================
+START_PHASE=1   # Par défaut, commencer depuis la phase 1
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --phase|--resume)
+            if [[ -n "${2:-}" ]] && [[ "$2" =~ ^[1-3]$ ]]; then
+                START_PHASE="$2"
+                shift 2
+            else
+                err "Usage: --phase <1|2|3>"
+                exit 1
+            fi
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--phase <1|2|3>]"
+            echo ""
+            echo "Options:"
+            echo "  --phase, --resume <N>  Reprendre depuis la phase N (1, 2 ou 3)"
+            echo "  --help, -h             Afficher cette aide"
+            echo ""
+            echo "Phases:"
+            echo "  1  Installation d'Arch via archinstall (défaut)"
+            echo "  2  Post-installation dans le chroot"
+            echo "  3  Finalisation"
+            exit 0
+            ;;
+        *)
+            err "Option inconnue : $1"
+            err "Utilisez --help pour l'aide."
+            exit 1
+            ;;
+    esac
+done
+
+if [[ "$START_PHASE" -gt 1 ]]; then
+    info "Reprise depuis la phase ${START_PHASE}."
+fi
 
 # ========================== VARIABLES =======================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,22 +113,19 @@ if [[ "$(id -u)" -ne 0 ]]; then
     exit 1
 fi
 
-if [[ ! -f "$USER_CONFIG" ]]; then
+if [[ "$START_PHASE" -le 1 ]] && [[ ! -f "$USER_CONFIG" ]]; then
     err "Fichier de configuration introuvable : $USER_CONFIG"
     err "Placez user_configuration.json dans le répertoire courant ou dans le même dossier que ce script."
     exit 1
 fi
 
 if [[ ! -f "$USER_CREDS" ]]; then
-    err "Fichier de credentials introuvable : $USER_CREDS"
-    err "Placez user_credentials.json dans le répertoire courant ou dans le même dossier que ce script."
-    exit 1
-fi
-
-# Détection de l'utilisateur cible depuis les credentials
-# On cherche un nom d'utilisateur dans le fichier JSON creds
-# Si le format est chiffré argon2, on demandera à l'utilisateur
-if command -v python3 &>/dev/null; then
+    if [[ "$START_PHASE" -le 1 ]]; then
+        err "Fichier de credentials introuvable : $USER_CREDS"
+        err "Placez user_credentials.json dans le répertoire courant ou dans le même dossier que ce script."
+        exit 1
+    fi
+elif command -v python3 &>/dev/null; then
     TARGET_USER=$(python3 -c "
 import json, sys
 try:
@@ -117,6 +155,7 @@ log "Utilisateur cible détecté/défini : $TARGET_USER"
 ###############################################################################
 #  PHASE 1 : Installation d'Arch via archinstall
 ###############################################################################
+if [[ "$START_PHASE" -le 1 ]]; then
 section "Phase 1 : Installation d'Arch Linux via archinstall"
 
 info "Synchronisation de l'horloge système..."
@@ -159,10 +198,23 @@ if ! mountpoint -q "${MOUNT_POINT}"; then
         exit 1
     fi
 fi
+fi # END Phase 1
 
 ###############################################################################
 #  PHASE 2 : Post-installation dans le chroot
 ###############################################################################
+if [[ "$START_PHASE" -ge 2 ]]; then
+    # Vérifier que /mnt est monté (nécessaire pour les phases 2+)
+    if ! mountpoint -q "${MOUNT_POINT}"; then
+        warn "${MOUNT_POINT} n'est pas monté."
+        info "Pour reprendre, montez d'abord votre système installé sur ${MOUNT_POINT}."
+        info "Exemple : mount /dev/sdXN ${MOUNT_POINT}"
+        err "Montez le système cible sur ${MOUNT_POINT} puis relancez le script."
+        exit 1
+    fi
+fi
+
+if [[ "$START_PHASE" -le 2 ]]; then
 section "Phase 2 : Post-installation (chroot)"
 
 # S'assurer que /tmp existe dans le système cible avant d'y écrire
@@ -829,6 +881,7 @@ arch-chroot "${MOUNT_POINT}" /tmp/post_install.sh
 
 # Nettoyage
 rm -f "${MOUNT_POINT}/tmp/post_install.sh"
+fi # END Phase 2
 
 ###############################################################################
 #  PHASE 3 : Finalisation
