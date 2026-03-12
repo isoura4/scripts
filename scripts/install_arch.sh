@@ -138,14 +138,39 @@ archinstall \
 rm -rf "$ARCHINSTALL_CONFIG_DIR"
 log "archinstall terminé avec succès."
 
+# Vérifier que MOUNT_POINT est toujours monté après archinstall (archinstall démonte /mnt à la fin)
+if ! mountpoint -q "${MOUNT_POINT}"; then
+    warn "archinstall a démonté ${MOUNT_POINT}, tentative de remontage..."
+    ROOT_PART=$(lsblk -rno NAME,PARTLABEL | grep -iw root | head -1 | awk '{print $1}')
+    if [[ -z "$ROOT_PART" ]]; then
+        # Fallback : prendre la partition non-swap avec le système de fichiers compatible la plus grande
+        ROOT_PART=$(lsblk -rno NAME,FSTYPE,SIZE | grep -E "ext4|btrfs|xfs" | sort -k3 -rh | head -1 | awk '{print $1}')
+    fi
+    if [[ -n "$ROOT_PART" ]]; then
+        mount "/dev/${ROOT_PART}" "${MOUNT_POINT}"
+        log "Partition root /dev/${ROOT_PART} remontée sur ${MOUNT_POINT}."
+        if [[ -f "${MOUNT_POINT}/etc/fstab" ]]; then
+            if ! mount --all --fstab "${MOUNT_POINT}/etc/fstab" --target-prefix "${MOUNT_POINT}" 2>/dev/null; then
+                warn "Certaines partitions secondaires n'ont pas pu être remontées depuis ${MOUNT_POINT}/etc/fstab."
+            fi
+        fi
+    else
+        err "Impossible de retrouver la partition root. Abandon."
+        exit 1
+    fi
+fi
+
 ###############################################################################
 #  PHASE 2 : Post-installation dans le chroot
 ###############################################################################
 section "Phase 2 : Post-installation (chroot)"
 
+# S'assurer que /tmp existe dans le système cible avant d'y écrire
+mkdir -p "${MOUNT_POINT}/tmp"
+
 # Créer le script de post-installation qui s'exécutera dans le chroot
 cat > "${MOUNT_POINT}/tmp/post_install.sh" << 'CHROOT_SCRIPT'
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 # Couleurs (redéfinies dans le chroot)
