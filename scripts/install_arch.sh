@@ -131,7 +131,7 @@ import json, sys
 try:
     with open('$USER_CREDS') as f:
         data = json.load(f)
-    # Format nouveau : { '!users': [{'username': '...', ...}] }
+    # Format 1: structured with !users array
     if '!users' in data and isinstance(data['!users'], list):
         for u in data['!users']:
             if isinstance(u, dict) and 'username' in u:
@@ -139,17 +139,20 @@ try:
                 if name and name != 'root':
                     print(name)
                     sys.exit(0)
-    # Format ancien : { 'root': '...', 'myuser': '...' }
-    for user in data:
-        if user == 'root':
+    # Format 2: flat dict where keys are usernames
+    for key in data:
+        # Skip ALL keys starting with !
+        if key.startswith('!'):
             continue
-        if user.startswith('!'):
+        # Skip root
+        if key == 'root':
             continue
-        # Ignorer les clés qui ressemblent à des métadonnées
-        lower = user.lower()
-        if 'password' in lower or 'enc' in lower or 'salt' in lower:
+        # Skip keys that look like metadata
+        lower = key.lower()
+        if any(x in lower for x in ['password', 'enc', 'salt', 'hash', 'users']):
             continue
-        print(user)
+        # This should be a username
+        print(key)
         sys.exit(0)
 except:
     pass
@@ -232,11 +235,11 @@ fi
 if [[ "$START_PHASE" -le 2 ]]; then
 section "Phase 2 : Post-installation (chroot)"
 
-# S'assurer que /tmp existe dans le système cible avant d'y écrire
-mkdir -p "${MOUNT_POINT}/tmp"
+# S'assurer que /root existe dans le système cible avant d'y écrire
+mkdir -p "${MOUNT_POINT}/root"
 
 # Créer le script de post-installation qui s'exécutera dans le chroot
-cat > "${MOUNT_POINT}/tmp/post_install.sh" << 'CHROOT_SCRIPT'
+cat > "${MOUNT_POINT}/root/post_install.sh" << 'CHROOT_SCRIPT'
 #!/usr/bin/bash
 set -euo pipefail
 
@@ -253,11 +256,11 @@ CHROOT_SCRIPT
 
 # Injecter toutes les variables dans le script chroot (après le shebang)
 # Trois appels séquentiels : chaque insertion décale les lignes suivantes
-sed -i "1a TARGET_USER=\"${TARGET_USER}\"" "${MOUNT_POINT}/tmp/post_install.sh"
-sed -i "2a DOTS_REPO=\"${DOTS_REPO}\"" "${MOUNT_POINT}/tmp/post_install.sh"
-sed -i "3a DOTS_DIR_NAME=\"${DOTS_DIR_NAME}\"" "${MOUNT_POINT}/tmp/post_install.sh"
+sed -i "1a TARGET_USER=\"${TARGET_USER}\"" "${MOUNT_POINT}/root/post_install.sh"
+sed -i "2a DOTS_REPO=\"${DOTS_REPO}\"" "${MOUNT_POINT}/root/post_install.sh"
+sed -i "3a DOTS_DIR_NAME=\"${DOTS_DIR_NAME}\"" "${MOUNT_POINT}/root/post_install.sh"
 
-cat >> "${MOUNT_POINT}/tmp/post_install.sh" << 'CHROOT_SCRIPT'
+cat >> "${MOUNT_POINT}/root/post_install.sh" << 'CHROOT_SCRIPT'
 TARGET_HOME="/home/${TARGET_USER}"
 
 ###########################################################################
@@ -888,22 +891,22 @@ info "  Ctrl+Alt+F2       — TTY de secours si Hyprland crash"
 CHROOT_SCRIPT
 
 # Rendre le script exécutable et le lancer dans le chroot
-chmod +x "${MOUNT_POINT}/tmp/post_install.sh"
+chmod +x "${MOUNT_POINT}/root/post_install.sh"
 
 # Vérification du script avant exécution
-if [[ ! -f "${MOUNT_POINT}/tmp/post_install.sh" ]]; then
-    err "Le script post_install.sh n'a pas été créé dans ${MOUNT_POINT}/tmp/"
+if [[ ! -f "${MOUNT_POINT}/root/post_install.sh" ]]; then
+    err "Le script post_install.sh n'a pas été créé dans ${MOUNT_POINT}/root/"
     exit 1
 fi
-info "Vérification : post_install.sh créé ($(wc -l < "${MOUNT_POINT}/tmp/post_install.sh") lignes, $(wc -c < "${MOUNT_POINT}/tmp/post_install.sh") octets)"
-info "Shebang : $(head -1 "${MOUNT_POINT}/tmp/post_install.sh")"
-info "Variables injectées : $(head -5 "${MOUNT_POINT}/tmp/post_install.sh" | grep -cE '^[A-Z_]+=')"
+info "Vérification : post_install.sh créé ($(wc -l < "${MOUNT_POINT}/root/post_install.sh") lignes, $(wc -c < "${MOUNT_POINT}/root/post_install.sh") octets)"
+info "Shebang : $(head -1 "${MOUNT_POINT}/root/post_install.sh")"
+info "Variables injectées : $(head -5 "${MOUNT_POINT}/root/post_install.sh" | grep -cE '^[A-Z_]+=')"
 
 info "Exécution du script de post-installation dans le chroot..."
-arch-chroot "${MOUNT_POINT}" /usr/bin/bash /tmp/post_install.sh
+arch-chroot "${MOUNT_POINT}" /usr/bin/bash /root/post_install.sh
 
 # Nettoyage
-rm -f "${MOUNT_POINT}/tmp/post_install.sh"
+rm -f "${MOUNT_POINT}/root/post_install.sh"
 fi # END Phase 2
 
 ###############################################################################
