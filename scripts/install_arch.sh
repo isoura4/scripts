@@ -48,7 +48,7 @@ DOTS_DIR_NAME="dots-hyprland"
 
 # Fichiers de config archinstall (dans le même dossier que ce script)
 USER_CONFIG="${SCRIPT_DIR}/user_configuration.json"
-USER_CREDS="${SCRIPT_DIR}/user_credentials.json"
+USER_CREDS="${SCRIPT_DIR}/user_credential.json"
 
 # ========================== VÉRIFICATIONS PRÉLIMINAIRES ======================
 section "Vérifications préliminaires"
@@ -66,7 +66,7 @@ fi
 
 if [[ ! -f "$USER_CREDS" ]]; then
     err "Fichier de credentials introuvable : $USER_CREDS"
-    err "Placez user_credentials.json dans le même dossier que ce script."
+    err "Placez user_credential.json dans le même dossier que ce script."
     exit 1
 fi
 
